@@ -387,6 +387,9 @@ function renderCompanyCards() {
 
   container.innerHTML = currentSession.companies.map(c => {
     const revLabel = c.lastRevenuePerShare !== null ? `Last rev/share: $${c.lastRevenuePerShare}` : 'No revenue yet';
+    const playerShares = getTotalPlayerShares(currentSession, c.name);
+    const marketShares = (currentSession.marketShares && currentSession.marketShares[c.name]) || 0;
+    const companyShares = MAX_SHARES_PER_COMPANY - playerShares - marketShares;
     return `<div class="company-card">
       <h3>${c.name}</h3>
       <div class="company-field">
@@ -401,6 +404,7 @@ function renderCompanyCards() {
         <label>Treasury</label>
         <input type="number" value="${c.treasury}" aria-label="Treasury for ${c.name}" onchange="handleUpdateTreasury('${c.name}', Number(this.value))">
       </div>
+      <div class="company-field"><label>Shares: ${playerShares} player / ${marketShares} market / ${companyShares} IPO</label></div>
       <div class="company-field"><label>${revLabel}</label></div>
       <div class="revenue-row">
         <input type="number" min="0" value="0" id="rev-${c.name.replace(/\s+/g, '-')}" aria-label="Revenue for ${c.name}">
@@ -429,7 +433,7 @@ function renderShareholdingMatrix() {
     html += `<tr><td>${p.name}</td>`;
     companies.forEach(c => {
       const shares = getShareholding(currentSession, p.name, c.name);
-      html += `<td><input type="number" min="0" value="${shares}" aria-label="Shares of ${c.name} for ${p.name}" onchange="handleUpdateShares('${p.name}', '${c.name}', Number(this.value))"></td>`;
+      html += `<td><input type="number" min="0" value="${shares}" aria-label="Shares of ${c.name} for ${p.name}" onchange="handleUpdateShares('${p.name}', '${c.name}', Number(this.value))"> <button class="btn-primary btn-small" onclick="handleBuyShare('${p.name}', '${c.name}')" aria-label="Buy 1 share of ${c.name} for ${p.name}">Buy</button> <button class="btn-danger btn-small" onclick="handleSellShare('${p.name}', '${c.name}')" ${shares <= 0 ? 'disabled' : ''} aria-label="Sell 1 share of ${c.name} for ${p.name}">Sell</button></td>`;
     });
     html += '</tr>';
   });
@@ -490,9 +494,32 @@ async function handleUpdateShares(playerName, companyName, shares) {
     await autoSave();
     renderStandings();
     renderHeader();
+    renderShareholdingMatrix();
   } catch (e) {
     notify(e.message, 'error');
     renderShareholdingMatrix();
+  }
+}
+
+async function handleSellShare(playerName, companyName) {
+  try {
+    sellShare(currentSession, playerName, companyName);
+    await autoSave();
+    renderGameView();
+    notify(playerName + ' sold 1 share of ' + companyName, 'success');
+  } catch (e) {
+    notify(e.message, 'error');
+  }
+}
+
+async function handleBuyShare(playerName, companyName) {
+  try {
+    buyShare(currentSession, playerName, companyName);
+    await autoSave();
+    renderGameView();
+    notify(playerName + ' bought 1 share of ' + companyName, 'success');
+  } catch (e) {
+    notify(e.message, 'error');
   }
 }
 

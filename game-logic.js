@@ -17,6 +17,8 @@ const IPO_PRICES = [40, 50, 60, 70, 80, 90, 100, 112, 124, 137, 150];
 
 const PHASES = ['Stock Round', 'Operating Round 1', 'Operating Round 2'];
 
+const MAX_SHARES_PER_COMPANY = 10;
+
 /**
  * Validate inputs for session creation.
  * Returns an array of error messages, or null if valid.
@@ -72,7 +74,8 @@ function createSession(playerNames, bankPool, startingCash) {
     phase: 'Stock Round',
     players: playerNames.map(name => ({ name: name.trim(), cash })),
     companies: [],
-    shareholdings: {}
+    shareholdings: {},
+    marketShares: {}
   };
 }
 
@@ -174,6 +177,73 @@ function getShareholding(session, playerName, companyName) {
   return session.shareholdings[key] || 0;
 }
 
+/**
+ * Sell one share of a company. The player receives the current share price
+ * from the bank pool and their shareholding decreases by 1.
+ */
+function sellShare(session, playerName, companyName) {
+  const company = session.companies.find(c => c.name === companyName);
+  if (!company) {
+    throw new Error('Company not found');
+  }
+  const player = session.players.find(p => p.name === playerName);
+  if (!player) {
+    throw new Error('Player not found');
+  }
+  const key = `${playerName}:${companyName}`;
+  const currentShares = session.shareholdings[key] || 0;
+  if (currentShares <= 0) {
+    throw new Error('Player has no shares to sell');
+  }
+  session.shareholdings[key] = currentShares - 1;
+  if (!session.marketShares) session.marketShares = {};
+  session.marketShares[companyName] = (session.marketShares[companyName] || 0) + 1;
+  player.cash += company.sharePrice;
+  session.bankPool -= company.sharePrice;
+  session.updatedAt = new Date().toISOString();
+  return session;
+}
+
+/**
+ * Get total shares held by all players for a company.
+ */
+function getTotalPlayerShares(session, companyName) {
+  let total = 0;
+  for (const key of Object.keys(session.shareholdings)) {
+    if (key.endsWith(`:${companyName}`)) {
+      total += session.shareholdings[key];
+    }
+  }
+  return total;
+}
+
+/**
+ * Buy one share of a company. The player pays the current share price
+ * from personal cash into the company treasury and gains 1 share.
+ */
+function buyShare(session, playerName, companyName) {
+  const company = session.companies.find(c => c.name === companyName);
+  if (!company) {
+    throw new Error('Company not found');
+  }
+  const player = session.players.find(p => p.name === playerName);
+  if (!player) {
+    throw new Error('Player not found');
+  }
+  if (getTotalPlayerShares(session, companyName) >= MAX_SHARES_PER_COMPANY) {
+    throw new Error('All shares have been issued — none left to buy');
+  }
+  if (player.cash < company.sharePrice) {
+    throw new Error('Player does not have enough cash to buy a share');
+  }
+  const key = `${playerName}:${companyName}`;
+  session.shareholdings[key] = (session.shareholdings[key] || 0) + 1;
+  player.cash -= company.sharePrice;
+  company.treasury += company.sharePrice;
+  session.updatedAt = new Date().toISOString();
+  return session;
+}
+
 // --- Revenue Distribution ---
 
 function distributeRevenue(session, companyName, totalRevenue) {
@@ -185,20 +255,10 @@ function distributeRevenue(session, companyName, totalRevenue) {
     throw new Error('Company not found');
   }
 
-  // Calculate total issued shares for this company
-  let totalShares = 0;
-  for (const key of Object.keys(session.shareholdings)) {
-    if (key.endsWith(`:${companyName}`)) {
-      totalShares += session.shareholdings[key];
-    }
-  }
-  if (totalShares === 0) {
-    throw new Error('Cannot distribute revenue with zero total shares');
-  }
+  const revenuePerShare = Math.floor(totalRevenue / MAX_SHARES_PER_COMPANY);
 
-  const revenuePerShare = Math.floor(totalRevenue / totalShares);
-
-  // Distribute to each shareholder
+  // Player shares → player cash
+  const playerShares = getTotalPlayerShares(session, companyName);
   for (const key of Object.keys(session.shareholdings)) {
     if (key.endsWith(`:${companyName}`)) {
       const playerName = key.split(':')[0];
@@ -210,11 +270,21 @@ function distributeRevenue(session, companyName, totalRevenue) {
     }
   }
 
-  session.bankPool -= totalRevenue;
+  // Market shares → bank pool (money stays in bank, so no deduction needed for these)
+  const marketShares = (session.marketShares && session.marketShares[companyName]) || 0;
+
+  // IPO/company shares → company treasury
+  const ipoShares = MAX_SHARES_PER_COMPANY - playerShares - marketShares;
+  company.treasury += ipoShares * revenuePerShare;
+
+  // Bank pool pays out player shares and company shares; market shares stay in bank
+  session.bankPool -= (playerShares + ipoShares) * revenuePerShare;
+
   company.lastRevenuePerShare = revenuePerShare;
   session.updatedAt = new Date().toISOString();
   return session;
 }
+
 
 // --- Game State Utilities ---
 
@@ -269,11 +339,11 @@ function deserializeSession(json) {
 // Exports (CommonJS for Node.js, also works with <script> tag via global)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    COMPANIES, SHARE_PRICE_CHART, IPO_PRICES, PHASES,
+    COMPANIES, SHARE_PRICE_CHART, IPO_PRICES, PHASES, MAX_SHARES_PER_COMPANY,
     validateSessionCreation, createSession,
     getAvailableCompanies, incorporateCompany,
     updateSharePrice, updateChairman, updateTreasury,
-    updateShareholding, getShareholding,
+    updateShareholding, getShareholding, getTotalPlayerShares, sellShare, buyShare,
     distributeRevenue,
     isGameEnd, calculateWealth, getStandings, advancePhase,
     serializeSession, deserializeSession
