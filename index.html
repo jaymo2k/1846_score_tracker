@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1846 Score Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+  h1 { text-align: center; color: #e6b800; margin-bottom: 1rem; font-size: 1.6rem; }
+  h2 { color: #e6b800; margin-bottom: 0.75rem; font-size: 1.2rem; }
+  h3 { color: #ccc; margin-bottom: 0.5rem; font-size: 1rem; }
+  button { cursor: pointer; border: none; border-radius: 4px; padding: 0.5rem 1rem; font-size: 0.9rem; transition: opacity 0.2s; }
+  button:hover { opacity: 0.85; }
+  .btn-primary { background: #e6b800; color: #1a1a2e; font-weight: 600; }
+  .btn-danger { background: #c0392b; color: #fff; }
+  .btn-secondary { background: #444; color: #e0e0e0; }
+  .btn-small { padding: 0.3rem 0.6rem; font-size: 0.8rem; }
+  input, select { background: #2a2a4a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 0.4rem 0.6rem; font-size: 0.9rem; }
+  input:focus, select:focus { outline: none; border-color: #e6b800; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .card { background: #16213e; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+
+  /* Home View */
+  .session-list { list-style: none; }
+  .session-list li { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid #333; }
+  .session-list li:last-child { border-bottom: none; }
+  .session-name { cursor: pointer; color: #7ec8e3; }
+  .session-name:hover { text-decoration: underline; }
+  .empty-msg { color: #888; font-style: italic; padding: 1rem 0; }
+
+  /* New Game Form */
+  .form-group { margin-bottom: 0.75rem; }
+  .form-group label { display: block; margin-bottom: 0.25rem; color: #aaa; font-size: 0.85rem; }
+  .form-group input { width: 100%; }
+  .player-inputs { display: flex; flex-direction: column; gap: 0.4rem; }
+  .player-row { display: flex; gap: 0.5rem; align-items: center; }
+  .player-row input { flex: 1; }
+  .validation-error { color: #e74c3c; font-size: 0.85rem; margin-top: 0.25rem; }
+  .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+  /* Game View Header */
+  .game-header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+  .phase-indicator { font-size: 1.1rem; }
+  .phase-indicator span { color: #e6b800; font-weight: 600; }
+  .bank-pool-display { font-size: 1.3rem; font-weight: 700; }
+  .bank-pool-display.game-end { color: #e74c3c; }
+  .game-end-banner { background: #c0392b; color: #fff; text-align: center; padding: 0.5rem; border-radius: 4px; margin-bottom: 1rem; font-weight: 600; }
+
+  /* Standings Table */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; }
+  th, td { padding: 0.4rem 0.6rem; text-align: left; border-bottom: 1px solid #333; }
+  th { color: #aaa; font-size: 0.8rem; text-transform: uppercase; }
+  td { font-size: 0.9rem; }
+  .rank-1 { color: #e6b800; font-weight: 600; }
+
+  /* Company Cards */
+  .company-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+  .company-card { background: #16213e; border: 1px solid #333; border-radius: 8px; padding: 0.75rem; }
+  .company-card h3 { margin-bottom: 0.5rem; color: #7ec8e3; }
+  .company-field { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; font-size: 0.85rem; }
+  .company-field label { color: #aaa; }
+  .company-field select, .company-field input { width: 140px; }
+  .revenue-row { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+  .revenue-row input { width: 100px; }
+
+  /* Shareholding Matrix */
+  .matrix-wrapper { overflow-x: auto; }
+  .matrix-wrapper table input { width: 60px; text-align: center; }
+
+  /* Incorporate Form */
+  .incorporate-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; align-items: end; }
+  .incorporate-form .form-group { margin-bottom: 0; }
+  .incorporate-form .full-width { grid-column: 1 / -1; }
+
+  .notification { position: fixed; top: 1rem; right: 1rem; padding: 0.6rem 1rem; border-radius: 4px; font-size: 0.85rem; z-index: 100; opacity: 0; transition: opacity 0.3s; }
+  .notification.show { opacity: 1; }
+  .notification.error { background: #c0392b; color: #fff; }
+  .notification.success { background: #27ae60; color: #fff; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🚂 1846 Score Tracker</h1>
+  <div id="notification" class="notification" role="alert" aria-live="polite"></div>
+
+  <!-- HOME VIEW -->
+  <div id="home-view" class="view active">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <h2 style="margin:0;">Saved Games</h2>
+        <button class="btn-primary" onclick="showView('new-game-view')">New Game</button>
+      </div>
+      <ul id="session-list" class="session-list" aria-label="Saved game sessions"></ul>
+    </div>
+  </div>
+
+  <!-- NEW GAME VIEW -->
+  <div id="new-game-view" class="view">
+    <div class="card">
+      <h2>New Game</h2>
+      <div class="form-group">
+        <label for="bank-input">Initial Bank Pool ($)</label>
+        <input id="bank-input" type="number" min="1" value="7500" aria-describedby="bank-error">
+        <div id="bank-error" class="validation-error" role="alert"></div>
+      </div>
+      <div class="form-group">
+        <label for="starting-cash-input">Starting Cash per Player ($)</label>
+        <input id="starting-cash-input" type="number" min="0" value="400" aria-describedby="cash-error">
+        <div id="cash-error" class="validation-error" role="alert"></div>
+      </div>
+      <div class="form-group">
+        <label>Player Names</label>
+        <div id="player-inputs" class="player-inputs" role="group" aria-label="Player name inputs"></div>
+        <div id="player-error" class="validation-error" role="alert"></div>
+        <button class="btn-secondary btn-small" style="margin-top:0.4rem;" onclick="addPlayerInput()">+ Add Player</button>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" onclick="handleCreateGame()">Start Game</button>
+        <button class="btn-secondary" onclick="showView('home-view')">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- GAME VIEW -->
+  <div id="game-view" class="view">
+    <div class="game-header">
+      <div>
+        <div class="phase-indicator">Round <span id="round-num"></span> — <span id="phase-name"></span></div>
+        <button class="btn-secondary btn-small" style="margin-top:0.3rem;" onclick="handleAdvancePhase()">Advance Phase →</button>
+      </div>
+      <div>
+        <div id="bank-pool-display" class="bank-pool-display" aria-live="polite">Bank: $0</div>
+      </div>
+      <div>
+        <button class="btn-secondary btn-small" onclick="handleBackToHome()">← Back</button>
+      </div>
+    </div>
+    <div id="game-end-banner" class="game-end-banner" style="display:none;" role="alert">Game Over — Bank Pool Depleted</div>
+
+    <!-- Player Standings -->
+    <div class="card">
+      <h2>Player Standings</h2>
+      <table aria-label="Player standings">
+        <thead><tr><th>#</th><th>Player</th><th>Cash</th><th>Shares Value</th><th>Total Wealth</th></tr></thead>
+        <tbody id="standings-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Incorporate Company -->
+    <div class="card">
+      <h2>Incorporate Company</h2>
+      <div id="incorporate-section"></div>
+    </div>
+
+    <!-- Company Cards -->
+    <div class="card">
+      <h2>Companies</h2>
+      <div id="company-cards" class="company-grid"></div>
+      <p id="no-companies-msg" class="empty-msg">No companies incorporated yet.</p>
+    </div>
+
+    <!-- Shareholding Matrix -->
+    <div class="card">
+      <h2>Shareholdings</h2>
+      <div id="shareholding-matrix" class="matrix-wrapper"></div>
+      <p id="no-shares-msg" class="empty-msg">Incorporate a company to track shares.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/game-logic.js"></script>
+<script>
+// --- App State ---
+let currentSession = null;
+let currentSessionId = null;
+
+// --- Notifications ---
+function notify(msg, type) {
+  const el = document.getElementById('notification');
+  el.textContent = msg;
+  el.className = 'notification show ' + type;
+  setTimeout(() => el.className = 'notification', 2500);
+}
+
+// --- View Switching ---
+function showView(viewId) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(viewId).classList.add('active');
+  if (viewId === 'home-view') loadSessionList();
+  if (viewId === 'new-game-view') initNewGameForm();
+}
+
+// --- Server Communication ---
+async function apiList() {
+  const res = await fetch('/list');
+  return res.json();
+}
+async function apiLoad(id) {
+  const res = await fetch('/load/' + id);
+  return res.json();
+}
+async function apiSave(id, data) {
+  await fetch('/save/' + id, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+}
+async function apiDelete(id) {
+  await fetch('/delete/' + id, { method: 'DELETE' });
+}
+
+// --- Home View ---
+async function loadSessionList() {
+  const list = document.getElementById('session-list');
+  try {
+    const sessions = await apiList();
+    if (sessions.length === 0) {
+      list.innerHTML = '<li class="empty-msg">No saved games yet. Start a new one!</li>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => {
+      const displayName = s.id;
+      return `<li>
+        <span class="session-name" role="button" tabindex="0" onclick="handleLoadSession('${s.id}')" onkeydown="if(event.key==='Enter')handleLoadSession('${s.id}')">${displayName}</span>
+        <button class="btn-danger btn-small" onclick="handleDeleteSession('${s.id}')">Delete</button>
+      </li>`;
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<li class="empty-msg">Failed to load sessions.</li>';
+  }
+}
+
+async function handleLoadSession(id) {
+  try {
+    const session = await apiLoad(id);
+    currentSession = session;
+    currentSessionId = id;
+    showView('game-view');
+    renderGameView();
+  } catch (e) {
+    notify('Failed to load session', 'error');
+  }
+}
+
+async function handleDeleteSession(id) {
+  if (!confirm('Delete this session?')) return;
+  try {
+    await apiDelete(id);
+    loadSessionList();
+    notify('Session deleted', 'success');
+  } catch (e) {
+    notify('Failed to delete session', 'error');
+  }
+}
+</script>
+
+<script>
+// --- New Game Form ---
+function initNewGameForm() {
+  document.getElementById('bank-input').value = 7500;
+  document.getElementById('starting-cash-input').value = 400;
+  document.getElementById('bank-error').textContent = '';
+  document.getElementById('cash-error').textContent = '';
+  document.getElementById('player-error').textContent = '';
+  const container = document.getElementById('player-inputs');
+  container.innerHTML = '';
+  for (let i = 0; i < 3; i++) addPlayerInput();
+}
+
+function addPlayerInput() {
+  const container = document.getElementById('player-inputs');
+  const idx = container.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'player-row';
+  row.innerHTML = `<input type="text" placeholder="Player ${idx}" aria-label="Player ${idx} name"><button class="btn-danger btn-small" onclick="this.parentElement.remove()" aria-label="Remove player ${idx}">✕</button>`;
+  container.appendChild(row);
+}
+
+async function handleCreateGame() {
+  document.getElementById('bank-error').textContent = '';
+  document.getElementById('cash-error').textContent = '';
+  document.getElementById('player-error').textContent = '';
+
+  const bankPool = Number(document.getElementById('bank-input').value);
+  const startingCash = Number(document.getElementById('starting-cash-input').value);
+  const inputs = document.querySelectorAll('#player-inputs input');
+  const names = Array.from(inputs).map(i => i.value).filter(n => n.trim() !== '');
+
+  const errors = validateSessionCreation(names, bankPool, startingCash);
+  if (errors) {
+    if (errors.some(e => e.includes('Bank'))) document.getElementById('bank-error').textContent = errors.find(e => e.includes('Bank'));
+    if (errors.some(e => e.includes('Starting cash'))) document.getElementById('cash-error').textContent = errors.find(e => e.includes('Starting cash'));
+    if (errors.some(e => e.includes('player') || e.includes('Player'))) document.getElementById('player-error').textContent = errors.find(e => e.includes('player') || e.includes('Player'));
+    return;
+  }
+
+  try {
+    const session = createSession(names, bankPool, startingCash);
+    currentSession = session;
+    currentSessionId = session.id;
+    await apiSave(session.id, session);
+    showView('game-view');
+    renderGameView();
+    notify('Game created', 'success');
+  } catch (e) {
+    notify('Failed to create game: ' + e.message, 'error');
+  }
+}
+
+// --- Auto-save helper ---
+async function autoSave() {
+  if (!currentSession || !currentSessionId) return;
+  currentSession.updatedAt = new Date().toISOString();
+  try {
+    await apiSave(currentSessionId, currentSession);
+  } catch (e) {
+    notify('Save failed', 'error');
+  }
+}
+
+// --- Game View Rendering ---
+function renderGameView() {
+  if (!currentSession) return;
+  renderHeader();
+  renderStandings();
+  renderIncorporateForm();
+  renderCompanyCards();
+  renderShareholdingMatrix();
+}
+
+function renderHeader() {
+  const s = currentSession;
+  document.getElementById('round-num').textContent = s.round;
+  document.getElementById('phase-name').textContent = s.phase;
+  const bankEl = document.getElementById('bank-pool-display');
+  bankEl.textContent = 'Bank: $' + s.bankPool.toLocaleString();
+  const ended = isGameEnd(s);
+  bankEl.className = 'bank-pool-display' + (ended ? ' game-end' : '');
+  document.getElementById('game-end-banner').style.display = ended ? 'block' : 'none';
+}
+
+function renderStandings() {
+  const standings = getStandings(currentSession);
+  const tbody = document.getElementById('standings-body');
+  tbody.innerHTML = standings.map((p, i) => {
+    const player = currentSession.players.find(pl => pl.name === p.name);
+    const sharesValue = p.wealth - player.cash;
+    const cls = i === 0 ? ' class="rank-1"' : '';
+    return `<tr${cls}><td>${i + 1}</td><td>${p.name}</td><td>$${player.cash.toLocaleString()}</td><td>$${sharesValue.toLocaleString()}</td><td>$${p.wealth.toLocaleString()}</td></tr>`;
+  }).join('');
+}
+
+function renderIncorporateForm() {
+  const section = document.getElementById('incorporate-section');
+  const available = getAvailableCompanies(currentSession);
+  if (available.length === 0) {
+    section.innerHTML = '<p class="empty-msg">All companies have been incorporated.</p>';
+    return;
+  }
+  const companyOpts = available.map(c => `<option value="${c}">${c}</option>`).join('');
+  const ipoOpts = IPO_PRICES.map(p => `<option value="${p}">$${p}</option>`).join('');
+  const playerOpts = currentSession.players.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  section.innerHTML = `
+    <div class="incorporate-form">
+      <div class="form-group"><label>Company</label><select id="inc-company" aria-label="Company to incorporate">${companyOpts}</select></div>
+      <div class="form-group"><label>IPO Price</label><select id="inc-ipo" aria-label="IPO price">${ipoOpts}</select></div>
+      <div class="form-group"><label>Chairman</label><select id="inc-chairman" aria-label="Chairman">${playerOpts}</select></div>
+      <div class="full-width"><button class="btn-primary" onclick="handleIncorporate()">Incorporate (2 shares × IPO price from chairman)</button></div>
+    </div>`;
+}
+</script>
+
+<script>
+// --- Company Cards ---
+function renderCompanyCards() {
+  const container = document.getElementById('company-cards');
+  const noMsg = document.getElementById('no-companies-msg');
+  if (currentSession.companies.length === 0) {
+    container.innerHTML = '';
+    noMsg.style.display = 'block';
+    return;
+  }
+  noMsg.style.display = 'none';
+  const priceOpts = SHARE_PRICE_CHART.map(p => `<option value="${p}">$${p}</option>`).join('');
+  const playerOpts = currentSession.players.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+
+  container.innerHTML = currentSession.companies.map(c => {
+    const revLabel = c.lastRevenuePerShare !== null ? `Last rev/share: $${c.lastRevenuePerShare}` : 'No revenue yet';
+    return `<div class="company-card">
+      <h3>${c.name}</h3>
+      <div class="company-field">
+        <label>Share Price</label>
+        <select aria-label="Share price for ${c.name}" onchange="handleUpdateSharePrice('${c.name}', Number(this.value))">${SHARE_PRICE_CHART.map(p => `<option value="${p}"${p === c.sharePrice ? ' selected' : ''}>$${p}</option>`).join('')}</select>
+      </div>
+      <div class="company-field">
+        <label>Chairman</label>
+        <select aria-label="Chairman of ${c.name}" onchange="handleUpdateChairman('${c.name}', this.value)">${currentSession.players.map(p => `<option value="${p.name}"${p.name === c.chairman ? ' selected' : ''}>${p.name}</option>`).join('')}</select>
+      </div>
+      <div class="company-field">
+        <label>Treasury</label>
+        <input type="number" value="${c.treasury}" aria-label="Treasury for ${c.name}" onchange="handleUpdateTreasury('${c.name}', Number(this.value))">
+      </div>
+      <div class="company-field"><label>${revLabel}</label></div>
+      <div class="revenue-row">
+        <input type="number" min="0" value="0" id="rev-${c.name.replace(/\s+/g, '-')}" aria-label="Revenue for ${c.name}">
+        <button class="btn-primary btn-small" onclick="handleDistributeRevenue('${c.name}')">Distribute</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// --- Shareholding Matrix ---
+function renderShareholdingMatrix() {
+  const wrapper = document.getElementById('shareholding-matrix');
+  const noMsg = document.getElementById('no-shares-msg');
+  if (currentSession.companies.length === 0) {
+    wrapper.innerHTML = '';
+    noMsg.style.display = 'block';
+    return;
+  }
+  noMsg.style.display = 'none';
+  const players = currentSession.players;
+  const companies = currentSession.companies;
+  let html = '<table aria-label="Shareholding matrix"><thead><tr><th>Player</th>';
+  companies.forEach(c => html += `<th>${c.name}</th>`);
+  html += '</tr></thead><tbody>';
+  players.forEach(p => {
+    html += `<tr><td>${p.name}</td>`;
+    companies.forEach(c => {
+      const shares = getShareholding(currentSession, p.name, c.name);
+      html += `<td><input type="number" min="0" value="${shares}" aria-label="Shares of ${c.name} for ${p.name}" onchange="handleUpdateShares('${p.name}', '${c.name}', Number(this.value))"></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrapper.innerHTML = html;
+}
+
+// --- Event Handlers ---
+async function handleIncorporate() {
+  const name = document.getElementById('inc-company').value;
+  const ipoPrice = Number(document.getElementById('inc-ipo').value);
+  const chairman = document.getElementById('inc-chairman').value;
+  try {
+    incorporateCompany(currentSession, name, ipoPrice, chairman);
+    await autoSave();
+    renderGameView();
+    notify(name + ' incorporated', 'success');
+  } catch (e) {
+    notify(e.message, 'error');
+  }
+}
+
+async function handleUpdateSharePrice(companyName, newPrice) {
+  try {
+    updateSharePrice(currentSession, companyName, newPrice);
+    await autoSave();
+    renderStandings();
+    renderHeader();
+  } catch (e) {
+    notify(e.message, 'error');
+    renderCompanyCards();
+  }
+}
+
+async function handleUpdateChairman(companyName, playerName) {
+  try {
+    updateChairman(currentSession, companyName, playerName);
+    await autoSave();
+  } catch (e) {
+    notify(e.message, 'error');
+    renderCompanyCards();
+  }
+}
+
+async function handleUpdateTreasury(companyName, amount) {
+  try {
+    updateTreasury(currentSession, companyName, amount);
+    await autoSave();
+  } catch (e) {
+    notify(e.message, 'error');
+    renderCompanyCards();
+  }
+}
+
+async function handleUpdateShares(playerName, companyName, shares) {
+  try {
+    updateShareholding(currentSession, playerName, companyName, shares);
+    await autoSave();
+    renderStandings();
+    renderHeader();
+  } catch (e) {
+    notify(e.message, 'error');
+    renderShareholdingMatrix();
+  }
+}
+
+async function handleDistributeRevenue(companyName) {
+  const inputId = 'rev-' + companyName.replace(/\s+/g, '-');
+  const input = document.getElementById(inputId);
+  const revenue = Number(input.value);
+  try {
+    distributeRevenue(currentSession, companyName, revenue);
+    await autoSave();
+    renderGameView();
+    notify('Revenue distributed for ' + companyName, 'success');
+  } catch (e) {
+    notify(e.message, 'error');
+  }
+}
+
+async function handleAdvancePhase() {
+  try {
+    advancePhase(currentSession);
+    await autoSave();
+    renderHeader();
+    notify('Advanced to ' + currentSession.phase, 'success');
+  } catch (e) {
+    notify(e.message, 'error');
+  }
+}
+
+function handleBackToHome() {
+  currentSession = null;
+  currentSessionId = null;
+  showView('home-view');
+}
+
+// --- Init ---
+loadSessionList();
+</script>
+</body>
+</html>
